@@ -162,18 +162,9 @@ def main():
     timestamp = 0
 
     while True:
-        try:
-            response = get_api_answer(timestamp)
-        except WrongAnswerError as error:
-            if not already_sent:
-                send_message(bot, error.message)
-                already_sent = True
-            response = None
-        else:
-            already_sent = False
-
         message = ''
         try:
+            response = get_api_answer(timestamp)
             if check_response(response):
                 timestamp = response['current_date']
                 homeworks = response['homeworks']
@@ -186,15 +177,18 @@ def main():
                             logger.debug(status)
                             send_message(bot,
                                          HOMEWORK_VERDICTS[homework['status']])
-        except NoHomeworkNameError as error:
-            message = error.message
-        except WrongStatusError as error:
+        except (WrongAnswerError, NoHomeworkNameError,
+                WrongStatusError) as error:
             message = error.message
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
         if message:
             logger.error(message)
-            send_message(bot, message)
+            if not already_sent:
+                send_message(bot, message)
+                already_sent = True
+        else:
+            already_sent = False
         time.sleep(RETRY_PERIOD)
 
 
