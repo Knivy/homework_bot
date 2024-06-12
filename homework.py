@@ -50,7 +50,7 @@ def check_tokens():
         logger.critical(
             f'Отсутствует обязательная переменная окружения: '
             f'{message}\nПрограмма принудительно остановлена.'
-            )
+        )
         return False
     return True
 
@@ -62,7 +62,7 @@ def send_message(bot, message):
     except Exception as error:
         logger.error(
             f'Не удалось отправить сообщение. Ошибка: {error}', exc_info=True
-            )
+        )
     else:
         logger.debug(f'Бот отправил сообщение "{message}"')
 
@@ -143,7 +143,6 @@ def parse_status(homework):
 
 def main():
     """Основная логика работы бота."""
-
     if not check_tokens():
         exit()
 
@@ -151,10 +150,10 @@ def main():
         bot = TeleBot(token=TELEGRAM_TOKEN)
     except Exception as error:
         logger.critical(
-                f'Не удалось подключить бота {TELEGRAM_TOKEN}\n'
-                f'Ошибка {error}\n'
-                'Программа принудительно остановлена.', exc_info=True
-                )
+            f'Не удалось подключить бота {TELEGRAM_TOKEN}\n'
+            f'Ошибка {error}\n'
+            'Программа принудительно остановлена.', exc_info=True
+        )
         exit()
 
     # Флаг, что сообщение об ошибке уже отсылалось.
