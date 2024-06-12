@@ -101,26 +101,22 @@ def get_api_answer(timestamp):
 def check_response(response):
     """Проверка полученного ответа от API."""
     message = ''
-    if not response:
-        return False
     if not isinstance(response, dict):
         message = (f'Неожиданный формат ответа: {type(message)}\n'
                    f'Сообщение: {message}')
-    elif 'homeworks' not in response:
+        raise TypeError(message)
+    if 'homeworks' not in response:
         message = 'Ответ не содержит сведения о домашних заданиях'
     elif 'current_date' not in response:
         message = 'Ответ не содержит сведения о текущей дате'
     if message:
-        logger.error(message)
-        send_message(message)
+        raise WrongAnswerError(message)
     elif not isinstance(response['homeworks'], list):
         message = ('Неверный тип данных homeworks: '
                    f'{type(response["homeworks"])}')
         logger.error(message)
         send_message(message)
         raise TypeError(message)
-    else:
-        return True
 
 
 def parse_status(homework):
@@ -165,9 +161,7 @@ def main():
         message = ''
         try:
             response = get_api_answer(timestamp)
-            if not check_response(response):
-                time.sleep(RETRY_PERIOD)
-                continue
+            check_response(response)
             timestamp = response['current_date']
             homeworks = response['homeworks']
             if not homeworks:
