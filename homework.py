@@ -166,13 +166,10 @@ def main():
             homeworks = response['homeworks']
             if not homeworks:
                 logger.debug('Нет новых статусов')
-                time.sleep(RETRY_PERIOD)
-                continue
             for homework in homeworks:
                 status = parse_status(homework)
                 logger.debug(status)
-                send_message(bot,
-                             HOMEWORK_VERDICTS[homework['status']])
+                send_message(bot, status)
         except (WrongAnswerError, NoHomeworkNameError,
                 WrongStatusError) as error:
             message = error.message
