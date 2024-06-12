@@ -45,7 +45,7 @@ def check_tokens():
     elif not TELEGRAM_TOKEN:
         message = 'TELEGRAM_TOKEN'
     elif not TELEGRAM_CHAT_ID:
-        message = 'TELEGRAM_CHAT_ID'      
+        message = 'TELEGRAM_CHAT_ID'
     if message:
         logger.critical(
             f'Отсутствует обязательная переменная окружения: '
@@ -109,17 +109,18 @@ def check_response(response):
     elif 'homeworks' not in response:
         message = 'Ответ не содержит сведения о домашних заданиях'
     elif 'current_date' not in response:
-        message = 'Ответ не содержит сведения о текущей дате'   
+        message = 'Ответ не содержит сведения о текущей дате'
     if message:
         logger.error(message)
         send_message(message)
     elif not isinstance(response['homeworks'], list):
-        message = f'Неверный тип данных homeworks: {type(response["homeworks"])}'
+        message = ('Неверный тип данных homeworks: '
+                   f'{type(response["homeworks"])}')
         logger.error(message)
         send_message(message)
         raise TypeError(message)
     else:
-        return True       
+        return True
 
 
 def parse_status(homework):
@@ -138,7 +139,7 @@ def parse_status(homework):
         message = f'Неизвестный статус работы: {status}'
         raise WrongStatusError(message)
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
-    
+
 
 def main():
     """Основная логика работы бота."""
@@ -184,14 +185,15 @@ def main():
                         status = parse_status(homework)
                         if status:
                             logger.debug(status)
-                            send_message(bot, HOMEWORK_VERDICTS[homework['status']])
+                            send_message(bot,
+                                         HOMEWORK_VERDICTS[homework['status']])
         except NoHomeworkNameError as error:
             message = error.message
         except WrongStatusError as error:
-            message = error.message                        
+            message = error.message
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
-        if message:    
+        if message:
             logger.error(message)
             send_message(bot, message)
         time.sleep(RETRY_PERIOD)
