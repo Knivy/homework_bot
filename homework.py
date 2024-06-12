@@ -184,13 +184,14 @@ def main():
             message = error.message
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
-        if message:
-            logger.error(message)
-            if not already_sent:
-                send_message(bot, message)
-                already_sent = True
-        else:
+        if not message:
             already_sent = False
+        elif not already_sent:
+            logger.error(message)
+            send_message(bot, message)
+            already_sent = True
+        else:
+            logger.error(message)
         time.sleep(RETRY_PERIOD)
 
 
