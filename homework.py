@@ -141,7 +141,6 @@ def main():
     """Основная логика работы бота."""
     if not check_tokens():
         exit()
-
     try:
         bot = TeleBot(token=TELEGRAM_TOKEN)
     except Exception as error:
@@ -151,12 +150,9 @@ def main():
             'Программа принудительно остановлена.', exc_info=True
         )
         exit()
-
     # Флаг, что сообщение об ошибке уже отсылалось.
     already_sent = False
-
     timestamp = 0
-
     while True:
         message = ''
         try:
@@ -175,15 +171,16 @@ def main():
             message = error.message
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
-        if not message:
-            already_sent = False
-        elif not already_sent:
-            logger.error(message)
-            send_message(bot, message)
-            already_sent = True
-        else:
-            logger.error(message)
-        time.sleep(RETRY_PERIOD)
+        finally:
+            if not message:
+                already_sent = False
+            elif not already_sent:
+                logger.error(message)
+                send_message(bot, message)
+                already_sent = True
+            else:
+                logger.error(message)
+            time.sleep(RETRY_PERIOD)
 
 
 if __name__ == '__main__':
