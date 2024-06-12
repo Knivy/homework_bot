@@ -165,18 +165,20 @@ def main():
         message = ''
         try:
             response = get_api_answer(timestamp)
-            if check_response(response):
-                timestamp = response['current_date']
-                homeworks = response['homeworks']
-                if not homeworks:
-                    logger.debug('Нет новых статусов')
-                else:
-                    for homework in homeworks:
-                        status = parse_status(homework)
-                        if status:
-                            logger.debug(status)
-                            send_message(bot,
-                                         HOMEWORK_VERDICTS[homework['status']])
+            if not check_response(response):
+                time.sleep(RETRY_PERIOD)
+                continue
+            timestamp = response['current_date']
+            homeworks = response['homeworks']
+            if not homeworks:
+                logger.debug('Нет новых статусов')
+                time.sleep(RETRY_PERIOD)
+                continue
+            for homework in homeworks:
+                status = parse_status(homework)
+                logger.debug(status)
+                send_message(bot,
+                             HOMEWORK_VERDICTS[homework['status']])
         except (WrongAnswerError, NoHomeworkNameError,
                 WrongStatusError) as error:
             message = error.message
