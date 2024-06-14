@@ -5,28 +5,35 @@ import os
 import requests  # type: ignore
 import sys
 import time
+from http import HTTPStatus  # https://docs.python.org/3/library/http.html
 
 from dotenv import load_dotenv
 from telebot import TeleBot  # type: ignore
+from telebot.apihelper import ApiException  # type: ignore
 
-from exceptions import WrongStatusError, NoHomeworkNameError, WrongAnswerError
+from exceptions import NoSendMessageError, CanSendMessageError
 
+# Настройки времени опросов.
+DURATION_IN_HOURS = 0
+DURATION_IN_MINUTES = 10
+RETRY_PERIOD = (DURATION_IN_HOURS * 60 + DURATION_IN_MINUTES) * 60
+
+# Загрузка переменных окружения.
 load_dotenv()
-
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-RETRY_PERIOD = 600
+# Настройки API.
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
-
 HOMEWORK_VERDICTS = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
     'reviewing': 'Работа взята на проверку ревьюером.',
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
 }
 
+# Настройки логов.
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 handler = logging.StreamHandler(stream=sys.stdout)
@@ -39,30 +46,33 @@ logger.addHandler(handler)
 
 def check_tokens():
     """Проверка наличия необходимых переменных окружения."""
-    message = ''
-    if not PRACTICUM_TOKEN:
-        message = 'PRACTICUM_TOKEN'
-    elif not TELEGRAM_TOKEN:
-        message = 'TELEGRAM_TOKEN'
-    elif not TELEGRAM_CHAT_ID:
-        message = 'TELEGRAM_CHAT_ID'
-    if message:
-        logger.critical(
-            f'Отсутствует обязательная переменная окружения: '
-            f'{message}\nПрограмма принудительно остановлена.'
-        )
-        return False
-    return True
+    tokens = {
+        'PRACTICUM_TOKEN': PRACTICUM_TOKEN,
+        'TELEGRAM_TOKEN': TELEGRAM_TOKEN,
+        'TELEGRAM_CHAT-ID': TELEGRAM_CHAT_ID,
+    }
+    flag_no_token = False
+    for token in tokens:
+        if not tokens[token]:
+            logger.critical(
+                f'Отсутствует обязательная переменная окружения: '
+                f'{token}\nПрограмма принудительно остановлена.'
+            )
+            flag_no_token = True
+    if flag_no_token:
+        sys.exit()
 
 
 def send_message(bot, message):
     """Отправка сообщения."""
     try:
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
+    except ApiException as error:
+        # Тесты не проходят, если перехватывать в другом месте.
+        logger.error(f'Не удалось отправить сообщение. Ошибка API: {error}')
     except Exception as error:
-        logger.error(
-            f'Не удалось отправить сообщение. Ошибка: {error}', exc_info=True
-        )
+        raise NoSendMessageError(
+            f'Не удалось отправить сообщение. Ошибка: {error}')
     else:
         logger.debug(f'Бот отправил сообщение "{message}"')
 
@@ -75,26 +85,21 @@ def get_api_answer(timestamp):
         response = requests.get(url=ENDPOINT, headers=HEADERS, params=params)
     except Exception as error:
         message = (f'Сбой в работе программы: Ошибка {error}')
-        logger.error(message, exc_info=True)
     else:
         status = response.status_code
-        if status == 400:
+        if status == HTTPStatus.BAD_REQUEST:
             message = ('Сбой в работе программы: Код ответа API: 400\n'
                        'Неверный формат даты')
-            logger.error(message)
-        elif status == 401:
+        elif status == HTTPStatus.UNAUTHORIZED:
             message = ('Сбой в работе программы: Код ответа API: 401\n'
                        'Учетные данные не были предоставлены')
-            logger.error(message)
-        elif status == 404:
+        elif status == HTTPStatus.NOT_FOUND:
             message = (f'Сбой в работе программы:\nЭндпоинт {ENDPOINT} '
                        'недоступен. Код ответа API: 404')
-            logger.error(message)
-        elif status != 200:
+        elif status != HTTPStatus.OK:
             message = (f'Сбой в работе программы: Код ответа API: {status}')
-            logger.error(message)
     if message:
-        raise WrongAnswerError(message)
+        raise CanSendMessageError(message)
     return response.json()
 
 
@@ -102,20 +107,21 @@ def check_response(response):
     """Проверка полученного ответа от API."""
     message = ''
     if not isinstance(response, dict):
-        message = (f'Неожиданный формат ответа: {type(message)}\n'
-                   f'Сообщение: {message}')
-        raise TypeError(message)
+        response_type = type(response)
+        message = (f'Неожиданный формат ответа: {response_type}\n'
+                   f'Сообщение: {response}')
+        raise TypeError(message)  # Требование тестов.
     if 'homeworks' not in response:
         message = 'Ответ не содержит сведения о домашних заданиях'
     elif 'current_date' not in response:
         message = 'Ответ не содержит сведения о текущей дате'
     if message:
-        raise WrongAnswerError(message)
-    elif not isinstance(response['homeworks'], list):
+        raise CanSendMessageError(message)
+    homeworks = response["homeworks"]
+    if not isinstance(homeworks, list):
+        homeworks_type = type(homeworks)
         message = ('Неверный тип данных homeworks: '
-                   f'{type(response["homeworks"])}')
-        logger.error(message)
-        send_message(message)
+                   f'{homeworks_type}\n Сообщение: {homeworks}')
         raise TypeError(message)
 
 
@@ -124,23 +130,22 @@ def parse_status(homework):
     message = ''
     if 'status' not in homework:
         message = 'Нет статуса у домашней работы.'
-        raise WrongStatusError(message)
+        raise CanSendMessageError(message)
     if 'homework_name' not in homework:
         message = 'Нет имени у домашней работы.'
-        raise NoHomeworkNameError(message)
+        raise CanSendMessageError(message)
     homework_name = homework['homework_name']
     status = homework['status']
     verdict = HOMEWORK_VERDICTS.get(status)
     if not verdict:
         message = f'Неизвестный статус работы: {status}'
-        raise WrongStatusError(message)
+        raise CanSendMessageError(message)
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
 def main():
     """Основная логика работы бота."""
-    if not check_tokens():
-        exit()
+    check_tokens()
     try:
         bot = TeleBot(token=TELEGRAM_TOKEN)
     except Exception as error:
@@ -149,35 +154,40 @@ def main():
             f'Ошибка {error}\n'
             'Программа принудительно остановлена.', exc_info=True
         )
-        exit()
+        return
     # Флаг, что сообщение об ошибке уже отсылалось.
-    already_sent = False
-    timestamp = 0
+    already_sent = set()
+    # Флаг, что сообщение нельзя отослать.
+    cant_send = False
+    timestamp = int(time.time())
     while True:
         message = ''
         try:
-            response = get_api_answer(timestamp)
-            check_response(response)
-            timestamp = response['current_date']
-            homeworks = response['homeworks']
+            response_content = get_api_answer(timestamp)
+            check_response(response_content)
+            timestamp = response_content['current_date']
+            homeworks = response_content['homeworks']
             if not homeworks:
                 logger.debug('Нет новых статусов')
             for homework in homeworks:
                 status = parse_status(homework)
                 logger.debug(status)
                 send_message(bot, status)
-        except (WrongAnswerError, NoHomeworkNameError,
-                WrongStatusError) as error:
+        except NoSendMessageError as error:
+            message = error.message
+            cant_send = True
+        except (CanSendMessageError, TypeError) as error:
             message = error.message
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
         finally:
             if not message:
-                already_sent = False
-            elif not already_sent:
+                already_sent = set()
+                cant_send = False
+            elif message not in already_sent and not cant_send:
                 logger.error(message)
                 send_message(bot, message)
-                already_sent = True
+                already_sent.add(message)
             else:
                 logger.error(message)
             time.sleep(RETRY_PERIOD)

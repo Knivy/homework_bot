@@ -1,13 +1,9 @@
 """Пользовательские исключения."""
 
 
-class WrongStatusError(Exception):
-    """Недокументированный статус"""
+class CanSendMessageError(Exception):
+    """Ошибка, о которой можно отправить сообщение."""
 
 
-class NoHomeworkNameError(Exception):
-    """Нет ключа homework_name в статусе."""
-
-
-class WrongAnswerError(Exception):
-    """Неверный ответ сервера."""
+class NoSendMessageError(Exception):
+    """Не удается отправить сообщение."""
