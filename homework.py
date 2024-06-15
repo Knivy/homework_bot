@@ -11,12 +11,11 @@ from dotenv import load_dotenv
 from telebot import TeleBot  # type: ignore
 from telebot.apihelper import ApiException  # type: ignore
 
-from exceptions import NoSendMessageError, CanSendMessageError
-
 # Настройки времени опросов.
 DURATION_IN_HOURS = 0
 DURATION_IN_MINUTES = 10
-RETRY_PERIOD = (DURATION_IN_HOURS * 60 + DURATION_IN_MINUTES) * 60
+DURATION_IN_SECONDS = (DURATION_IN_HOURS * 60 + DURATION_IN_MINUTES) * 60
+RETRY_PERIOD = DURATION_IN_SECONDS
 
 # Загрузка переменных окружения.
 load_dotenv()
@@ -44,14 +43,22 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
-def check_tokens():
+class CanSendMessageError(Exception):
+    """Ошибка, о которой можно отправить сообщение."""
+
+
+class NoSendMessageError(Exception):
+    """Ошибка, о которой не удаётся отправить сообщение."""
+
+
+def check_tokens() -> None:
     """Проверка наличия необходимых переменных окружения."""
-    tokens = {
+    tokens: dict = {
         'PRACTICUM_TOKEN': PRACTICUM_TOKEN,
         'TELEGRAM_TOKEN': TELEGRAM_TOKEN,
         'TELEGRAM_CHAT-ID': TELEGRAM_CHAT_ID,
     }
-    flag_no_token = False
+    flag_no_token: bool = False
     for token in tokens:
         if not tokens[token]:
             logger.critical(
@@ -63,21 +70,24 @@ def check_tokens():
         sys.exit()
 
 
-def send_message(bot, message):
+def send_message(bot, message) -> None:
     """Отправка сообщения."""
     try:
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
     except ApiException as error:
         # Тесты не проходят, если перехватывать в другом месте.
-        logger.error(f'Не удалось отправить сообщение. Ошибка API: {error}')
+        logger.exception(
+            f'Не удалось отправить сообщение. Ошибка API: {error}')
+        raise NoSendMessageError(
+            f'Не удалось отправить сообщение. Ошибка: {error}') from error
     except Exception as error:
         raise NoSendMessageError(
-            f'Не удалось отправить сообщение. Ошибка: {error}')
+            f'Не удалось отправить сообщение. Ошибка: {error}') from error
     else:
         logger.debug(f'Бот отправил сообщение "{message}"')
 
 
-def get_api_answer(timestamp):
+def get_api_answer(timestamp) -> dict:
     """Получить ответ от API."""
     params = {'from_date': timestamp}
     message = ''
@@ -103,7 +113,7 @@ def get_api_answer(timestamp):
     return response.json()
 
 
-def check_response(response):
+def check_response(response) -> None:
     """Проверка полученного ответа от API."""
     message = ''
     if not isinstance(response, dict):
@@ -117,7 +127,7 @@ def check_response(response):
         message = 'Ответ не содержит сведения о текущей дате'
     if message:
         raise CanSendMessageError(message)
-    homeworks = response["homeworks"]
+    homeworks = response['homeworks']
     if not isinstance(homeworks, list):
         homeworks_type = type(homeworks)
         message = ('Неверный тип данных homeworks: '
@@ -125,25 +135,21 @@ def check_response(response):
         raise TypeError(message)
 
 
-def parse_status(homework):
+def parse_status(homework) -> str:
     """Парсит статус одной домашней работы."""
-    message = ''
     if 'status' not in homework:
-        message = 'Нет статуса у домашней работы.'
-        raise CanSendMessageError(message)
+        raise CanSendMessageError('Нет статуса у домашней работы.')
     if 'homework_name' not in homework:
-        message = 'Нет имени у домашней работы.'
-        raise CanSendMessageError(message)
+        raise CanSendMessageError('Нет имени у домашней работы.')
     homework_name = homework['homework_name']
     status = homework['status']
     verdict = HOMEWORK_VERDICTS.get(status)
     if not verdict:
-        message = f'Неизвестный статус работы: {status}'
-        raise CanSendMessageError(message)
+        raise CanSendMessageError(f'Неизвестный статус работы: {status}')
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
-def main():
+def main() -> None:
     """Основная логика работы бота."""
     check_tokens()
     try:
@@ -156,7 +162,7 @@ def main():
         )
         return
     # Какие сообщения уже отсылались.
-    already_sent = set()
+    already_sent: set = set()
     # Флаг, что сообщение нельзя отослать.
     cant_send = False
     timestamp = int(time.time())
@@ -174,10 +180,10 @@ def main():
                 logger.debug(status)
                 send_message(bot, status)
         except NoSendMessageError as error:
-            message = error.message
+            message = repr(error)
             cant_send = True
         except (CanSendMessageError, TypeError) as error:
-            message = error.message
+            message = repr(error)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
         finally:
